@@ -3,7 +3,13 @@ from sqlalchemy.orm import Session
 from .database import SessionLocal, engine, Base
 from .rag import index_document, search
 from . import models, auth
+from .rag import index_document, search, extract_text
+from .auth import verify_token 
 import shutil
+from fastapi.security import HTTPBearer
+
+security = HTTPBearer()
+
 app = FastAPI()
 Base.metadata.create_all(bind=engine)
 # DB Dependency
@@ -38,6 +44,7 @@ def login(username: str, password: str, db: Session = Depends(get_db)):
 @app.post("/documents/upload")
 def upload_doc(title: str, company_name: str, document_type: str,
                file: UploadFile = File(...),
+               user=Depends(verify_token),
                db: Session = Depends(get_db)):
 
     user = db.query(models.User).first()
@@ -67,7 +74,7 @@ def upload_doc(title: str, company_name: str, document_type: str,
     return {"msg": "Uploaded"}
 
 @app.get("/documents")
-def get_docs(db: Session = Depends(get_db)):
+def get_docs(user=Depends(verify_token), db: Session = Depends(get_db)):
     return db.query(models.Document).all()
 @app.get("/documents/{doc_id}")
 def get_doc(doc_id: int, db: Session = Depends(get_db)):
@@ -110,8 +117,7 @@ def index_doc(doc_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    with open(doc.file_path, "r") as f:
-        text = f.read()
+    text = extract_text(doc.file_path)
 
     index_document(doc_id, text)
 
